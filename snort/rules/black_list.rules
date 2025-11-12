@@ -1,0 +1,7 @@
+# Black List - Blocked IP addresses
+# Add malicious IPs here, one per line
+# Format: <IP address>
+
+# Example:
+# 192.168.1.200
+# 172.16.0.0/16

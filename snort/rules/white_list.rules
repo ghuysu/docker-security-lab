@@ -1,0 +1,7 @@
+# White List - Trusted IP addresses
+# Add trusted IPs here, one per line
+# Format: <IP address>
+
+# Example:
+# 192.168.1.100
+# 10.0.0.0/8

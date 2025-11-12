@@ -1,0 +1,24 @@
+# Local Snort Rules
+
+# ICMP Detection
+alert icmp any any -> any any (msg:"ICMP Packet Detected"; sid:1000001; rev:1;)
+
+# TCP SYN Scan Detection
+alert tcp any any -> any any (flags:S; msg:"TCP SYN Packet - Possible Port Scan"; sid:1000002; rev:1;)
+
+# HTTP Traffic Monitoring
+alert tcp any any -> any 80 (msg:"HTTP Traffic Detected"; sid:1000003; rev:1;)
+
+# SQL Injection Attempts
+alert tcp any any -> any 80 (msg:"Possible SQL Injection - UNION SELECT"; content:"UNION"; nocase; content:"SELECT"; nocase; sid:1000004; rev:1;)
+alert tcp any any -> any 80 (msg:"Possible SQL Injection - OR 1=1"; content:"OR"; nocase; content:"1=1"; nocase; sid:1000005; rev:1;)
+
+# XSS Detection
+alert tcp any any -> any 80 (msg:"Possible XSS - Script Tag"; content:"<script"; nocase; sid:1000006; rev:1;)
+alert tcp any any -> any 80 (msg:"Possible XSS - JavaScript"; content:"javascript:"; nocase; sid:1000007; rev:1;)
+
+# Directory Traversal
+alert tcp any any -> any 80 (msg:"Directory Traversal Attempt"; content:"../"; sid:1000008; rev:1;)
+
+# Command Injection
+alert tcp any any -> any 80 (msg:"Command Injection - Shell Commands"; content:"/bin/"; sid:1000009; rev:1;)

@@ -1,0 +1,74 @@
+services:
+  kali:
+    image: kalilinux/kali-rolling
+    container_name: kali
+    restart: no
+    tty: true
+    stdin_open: true
+    networks:
+      - lab-net
+
+  dvwa:
+    image: vulnerables/web-dvwa
+    container_name: dvwa
+    restart: no
+    networks:
+      - lab-net
+    ports:
+      - "8081:80"
+
+  snort:
+    image: linton/docker-snort
+    container_name: snort
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - ./snort/snort.conf:/etc/snort/snort.conf:ro
+      - ./snort/rules:/etc/snort/rules:ro
+      - ./snort/log:/var/log/snort
+    command: snort -i eth0 -c /etc/snort/snort.conf -A console
+    networks:
+      - lab-net
+
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki/config.yml:/etc/loki/config.yml:ro,Z
+    networks:
+      - lab-net
+
+  promtail:
+    image: grafana/promtail:3.0.0
+    container_name: promtail
+    volumes:
+      - ./promtail/config.yml:/etc/promtail/config.yml
+      - ./snort/log:/var/log/snort
+    networks:
+      - lab-net
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - lab-net
+    depends_on:
+      - loki
+    volumes:
+      - grafana-data:/var/lib/grafana
+
+networks:
+  lab-net:
+    driver: bridge
+
+volumes:
+  loki-data:
+  grafana-data:

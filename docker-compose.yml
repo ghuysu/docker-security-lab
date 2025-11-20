@@ -10,7 +10,7 @@ services:
 
   dvwa:
     image: vulnerables/web-dvwa
-    container_name: dvwa
+    hostname: dvwa          
     restart: no
     networks:
       - lab-net

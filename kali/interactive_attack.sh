@@ -7,7 +7,8 @@
 #=============================================================================
 
 # Configuration
-TARGET="dvwa"
+# Try to resolve dvwa hostname, fallback to container IP
+TARGET=$(getent hosts dvwa 2>/dev/null | awk '{print $1}' || echo "172.20.0.3")
 URL="http://$TARGET"
 COOKIE="PHPSESSID=ov8oc9l7qmlcicid43ubqi4n66; security=low"
 REPORT_DIR="/tmp/reports"

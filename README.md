@@ -1,210 +1,150 @@
-# Docker Security Lab - README
+# Docker Security Lab
 
-## 📋 Kiến trúc hệ thống
+Lab thực hành **Network Security Monitoring** với Suricata IDS, Loki, và Grafana.
 
-Lab thực hành về **Network Security Monitoring** với stack hiện đại:
+## Kiến trúc
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Docker Security Lab                  │
-├─────────────────────────────────────────────────────────┤
-│                                                         │
-│  ┌──────────┐      ┌──────────┐      ┌──────────┐       │
-│  │   Kali   │─────▶│   DVWA   │◀─────│  Snort   │       │
-│  │  Linux   │      │   App    │      │   IDS    │       │
-│  └──────────┘      └──────────┘      └────┬─────┘       │
-│                                           │             │
-│                                           │  logs       │
-│                                           ▼             │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │         Logging & Monitoring Stack               │   │
-│  │                                                  │   │
-│  │  Snort ──▶ Promtail ──▶ Loki ──▶ Grafana         │   │
-│  │   (IDS)    (Shipper)   (Store)   (Visualize)     │   │
-│  └──────────────────────────────────────────────────┘   │
-│                                                         │
-│  Access Points:                                         │
-│  • Grafana: http://localhost:3000                       │
-│  • Loki API: http://localhost:3100                      │
-│  • DVWA: http://localhost:8081                          │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│  Kali Linux  ──(attacks)──▶  DVWA Web App          │
+│                                  │                  │
+│                                  ▼                  │
+│                          Suricata IDS               │
+│                                  │                  │
+│                                  ▼                  │
+│              Promtail ──▶ Loki ──▶ Grafana          │
+└─────────────────────────────────────────────────────┘
 ```
 
-## 🎯 Chiến lược và mục tiêu Lab
+**Components:**
+- **Kali Linux**: Máy tấn công với tools (nmap, sqlmap, hydra)
+- **DVWA**: Ứng dụng web có lỗ hổng (target)
+- **Suricata 8.0**: IDS phát hiện tấn công real-time
+- **Loki 2.9**: Log storage
+- **Promtail 3.0**: Log shipper
+- **Grafana 11.2**: Dashboard & alerts
 
-### **Phase 1: Observability Foundation (HIỆN TẠI)**
-**Mục tiêu**: Xây dựng hệ thống logging tập trung với Grafana Loki Stack
+## Quick Start
 
-**Stack hiện tại**:
-- **Loki 2.9.0**: Log aggregation system (nhẹ hơn Elasticsearch)
-- **Promtail 3.0.0**: Log shipper (đọc logs từ Snort)
-- **Grafana 11.2.0**: Visualization dashboard
-
-
-### **Phase 2: Attack & Detection (SẮP TỚI)**
-- **Kali Linux**: Máy attacker
-- **DVWA**: Target application với nhiều lỗ hổng
-- **Snort IDS**: Phát hiện các cuộc tấn công real-time
-- **Loki & Grafana**: Snort logs sẽ được Promtail thu thập và gửi lên Loki để phân tích trong Grafana
-
-## 🚀 Setup từng bước
-
-### **Bước 1: Kiểm tra prerequisites**
 ```bash
-# Kiểm tra Docker
-docker --version  # Cần >= 20.10
-docker compose version  # Cần >= 2.0
-
-# Kiểm tra port conflicts
-lsof -i :3000  # Grafana
-lsof -i :3100  # Loki
-```
-
-### **Bước 2: Chuẩn bị cấu trúc thư mục**
-```bash
-# Directory structure đã có sẵn
-docker-security-lab/
-├── docker-compose.yml
-├── loki/
-│   └── config.yml
-├── promtail/
-│   └── config.yml
-└── snort/
-    ├── rules/
-    │   ├── local.
-    │   ├── white_list.rules
-    │   └── black_list.rules
-    ├── log/                # Snort sẽ ghi logs vào đây
-    └── snort.conf
-```
-
-### **Bước 3: Khởi động Logging Stack**
-```bash
-# Start Loki + Promtail + Grafana
+# 1. Khởi động tất cả services
 docker compose up -d
 
-# Kiểm tra status
-docker compose ps
+# 2. Setup tools trong Kali (lần đầu)
+docker compose exec kali bash -c 'cd /tools && bash setup.sh'
 
-# Xem logs nếu có vấn đề
-docker compose logs -f
+# 3. Truy cập Grafana
+# URL: http://localhost:3000
+# Login: admin/admin
+
+# 4. Chạy attack script
+docker compose exec kali bash
+cd /tools
+./interactive_attack.sh
 ```
 
-### **Bước 4: Cấu hình Grafana**
+## Attack Scenarios
 
-1. **Truy cập Grafana**: http://localhost:3000
-   - Username: `admin`
-   - Password: `admin` (sẽ yêu cầu đổi lần đầu)
+Script `interactive_attack.sh` hỗ trợ 7 loại tấn công:
 
-2. **Add Loki Data Source**:
-   ```
-   Configuration (⚙️) → Data Sources → Add data source
-   → Chọn "Loki"
-   → URL: http://loki:3100
-   → Save & Test
-   ```
+1. **Port Scan** - nmap reconnaissance
+2. **SQL Injection** - database attacks  
+3. **XSS** - cross-site scripting
+4. **LFI** - local file inclusion
+5. **Brute Force** - password guessing
+6. **File Upload** - malicious file upload
+7. **CSRF** - cross-site request forgery
 
-3. **Import Snort Dashboard**:
-   ```
-   Create (+) → Import
-   → Upload JSON file hoặc paste Dashboard ID
-   → Chọn Loki data source
-   → Import
-   ```
+Mỗi attack sẽ trigger alert trong Grafana sau 1-2 phút.
 
-### **Bước 5: Test Logging Pipeline**
+## Dashboards & Alerts
 
-```bash
-docker compose up -d snort
+**Access Points:**
+- Grafana: http://localhost:3000
+- DVWA: http://localhost:8081
+- Loki API: http://localhost:3100
 
-# Tạo test traffic
-docker exec snort ping -c 5 8.8.8.8
+**Dashboards:**
+- **Suricata IDS - Real Attack Monitoring**: Overview tất cả attacks
+- **Suricata IDS - Simple Monitor**: View logs real-time
 
-# Kiểm tra logs được tạo
-ls -lh snort/log/
+**Alert Rules (8 rules):**
+- SQL Injection, XSS, LFI (Critical/High)
+- Port Scan, Brute Force, File Upload (High)
+- CSRF (Medium)
+- High Volume Attack (Critical)
 
-# Query logs trong Grafana
-# Explore → Loki → Query: {job="snort"}
-```
-
-### **Bước 6: Enable Attack Scenario (Optional)**
-
-Khi muốn test attack scenarios:
+## Kiểm tra hoạt động
 
 ```bash
-# 1. Uncomment DVWA và Kali trong docker-compose.yml
-# 2. Restart stack
-docker compose up -d
-
-# 3. Setup DVWA
-# Truy cập http://localhost:8081
-# Click "Create/Reset Database"
-
-# 4. Exec vào Kali
-docker exec -it kali bash
-
-# Install tools trong Kali
-apt update && apt install -y nmap sqlmap
-
-# 5. Test attack từ Kali → DVWA
-# Snort sẽ detect và log
-```
-
-## 📊 Monitoring & Troubleshooting
-
-### **Kiểm tra health của services**
-
-```bash
-# Loki health
-curl http://localhost:3100/ready
-
-# Promtail metrics
-curl http://localhost:9080/metrics
-
 # Container status
 docker compose ps
-docker compose logs <service-name>
+
+# Suricata logs
+tail -f suricata/logs/fast.log
+grep "NMAP\|SQL\|XSS" suricata/logs/fast.log
+
+# Loki có nhận logs không
+curl 'http://localhost:3100/loki/api/v1/label/job/values'
+# Kết quả: {"data":["suricata"]}
+
+# Alert rules health
+# Grafana → Alerting → Alert rules
 ```
-## 🎓 Kịch bản thực hành
 
-### **Scenario 1: Basic Log Collection**
-1. Khởi động stack cơ bản (Loki + Promtail + Grafana)
-2. Enable Snort
-3. Tạo traffic và quan sát logs trong Grafana
-4. Tạo dashboard đơn giản
+## Cấu trúc thư mục
 
-### **Scenario 2: Attack Detection**
-1. Enable DVWA và Kali
-2. Thực hiện SQL Injection từ Kali
-3. Quan sát Snort alerts trong Grafana
-4. Phân tích patterns
+```
+.
+├── docker-compose.yml
+├── kali/
+│   ├── interactive_attack.sh    # Attack script
+│   └── setup.sh                 # Install tools
+├── suricata/
+│   ├── suricata.yaml           # Suricata config
+│   ├── rules/local.rules       # Detection rules (39 rules)
+│   └── logs/
+│       ├── eve.json            # JSON logs → Loki
+│       └── fast.log            # Text alerts
+├── grafana/provisioning/
+│   ├── dashboards/             # 2 dashboards
+│   ├── alerting/alert-rules.yml # 8 alert rules
+│   └── datasources/loki.yml
+├── promtail/config.yml
+└── loki/config.yml
+```
 
-### **Scenario 3: Custom Rules**
-1. Thêm custom Snort rules
-2. Test rules với specific payloads
-3. Verify detection trong logs
-4. Fine-tune để giảm false positives
+## Troubleshooting
 
-## 📁 File quan trọng
+**Suricata không detect:**
+- Kiểm tra bridge interface: `docker network inspect docker-security-lab_lab-net`
+- Xem log: `docker compose logs suricata`
+- NMAP scan cần >= 10 ports để trigger threshold
 
-| File | Mục đích | Chỉnh sửa |
-|------|----------|-----------|
-| `docker-compose.yml` | Định nghĩa services | Enable/disable services |
-| `loki/config.yml` | Loki configuration | Retention, limits |
-| `promtail/config.yml` | Log scraping config | Log paths, labels |
-| `snort/snort.conf` | Snort IDS config | Network variables |
-| `snort/rules/*.rules` | Detection rules | Add/modify signatures |
+**Alert rules error:**
+- Check datasource UID: `uid: loki` trong `loki.yml`
+- Restart Grafana: `docker compose restart grafana`
 
-## 🔐 Security Notes
+**DVWA không resolve:**
+- Network alias đã được set, restart containers
+- Test: `docker compose exec kali getent hosts dvwa`
 
-- ⚠️ **KHÔNG** dùng setup này cho production
-- ⚠️ DVWA chứa lỗ hổng cố ý - chỉ dùng trong isolated network
-- ⚠️ Grafana default credentials phải đổi ngay
-- ⚠️ Snort chạy với NET_ADMIN capabilities - cần thiết cho packet capture
+## Security Warning
 
-## 📚 Tài liệu tham khảo
+⚠️ Lab này chỉ dùng cho mục đích học tập:
+- DVWA chứa lỗ hổng cố ý
+- Không expose ports ra internet
+- Chỉ chạy trong môi trường isolated
 
-- [Grafana Loki Documentation](https://grafana.com/docs/loki/latest/)
-- [Promtail Configuration](https://grafana.com/docs/loki/latest/clients/promtail/)
-- [Snort Rules Writing](https://docs.snort.org/rules/)
-- [DVWA Documentation](https://github.com/digininja/DVWA)
+## Làm sạch
+
+```bash
+# Dừng tất cả
+docker compose down
+
+# Xóa volumes (data sẽ mất)
+docker compose down -v
+
+# Xóa orphaned containers
+docker compose down --remove-orphans
+```

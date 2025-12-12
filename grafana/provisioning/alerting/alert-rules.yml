@@ -1,0 +1,290 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: Suricata Critical Alerts
+    folder: Suricata Monitoring
+    interval: 2m
+    rules:
+      #=======================================================================
+      # CRITICAL ATTACKS ONLY - Simple queries without regex parser
+      #=======================================================================
+      - uid: sql-injection-alert
+        title: SQL Injection Attack Detected
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: loki
+            model:
+              expr: 'sum(count_over_time({job="suricata"} |~ `(?i)(sql|sqlmap)` [5m]))'
+              queryType: instant
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    params:
+                      - 5
+                    type: gt
+        noDataState: NoData
+        execErrState: Error
+        for: 1m
+        annotations:
+          summary: 'SQL Injection attack detected'
+          description: 'Suricata detected SQL injection attempts in the last 5 minutes'
+        labels:
+          severity: critical
+          attack_type: sql_injection
+
+      - uid: xss-attack-alert
+        title: XSS Attack Detected
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: loki
+            model:
+              expr: 'sum(count_over_time({job="suricata"} |~ `(?i)xss` [5m]))'
+              queryType: instant
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    params:
+                      - 3
+                    type: gt
+        noDataState: NoData
+        execErrState: Error
+        for: 1m
+        annotations:
+          summary: 'XSS attack detected'
+          description: 'Suricata detected XSS attempts in the last 5 minutes'
+        labels:
+          severity: high
+          attack_type: xss
+
+      - uid: lfi-attack-alert
+        title: LFI Attack Detected
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: loki
+            model:
+              expr: 'sum(count_over_time({job="suricata"} |~ `(?i)lfi` [5m]))'
+              queryType: instant
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+        noDataState: NoData
+        execErrState: Error
+        for: 1m
+        annotations:
+          summary: 'Local File Inclusion attack detected'
+          description: 'Suricata detected LFI attempts in the last 5 minutes'
+        labels:
+          severity: critical
+          attack_type: lfi
+
+      - uid: high-volume-attack-alert
+        title: High Volume Attack Detected
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: loki
+            model:
+              expr: 'sum(count_over_time({job="suricata"} [10m]))'
+              queryType: instant
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    params:
+                      - 100
+                    type: gt
+        noDataState: NoData
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: 'High volume of security alerts'
+          description: 'Suricata triggered many alerts in the last 10 minutes - possible active attack'
+        labels:
+          severity: critical
+          attack_type: multiple
+
+      - uid: nmap-scan-alert
+        title: NMAP Port Scan Detected
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: loki
+            model:
+              expr: 'sum(count_over_time({job="suricata"} |~ `(?i)nmap` [5m]))'
+              queryType: instant
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+        noDataState: NoData
+        execErrState: Error
+        for: 1m
+        annotations:
+          summary: 'Port scanning detected'
+          description: 'Suricata detected NMAP port scanning activity in the last 5 minutes'
+        labels:
+          severity: high
+          attack_type: port_scan
+
+      - uid: brute-force-alert
+        title: Brute Force Attack Detected
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: loki
+            model:
+              expr: 'sum(count_over_time({job="suricata"} |~ `(?i)(brute force|hydra)` [5m]))'
+              queryType: instant
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    params:
+                      - 3
+                    type: gt
+        noDataState: NoData
+        execErrState: Error
+        for: 1m
+        annotations:
+          summary: 'Brute force attack detected'
+          description: 'Suricata detected brute force login attempts in the last 5 minutes'
+        labels:
+          severity: high
+          attack_type: brute_force
+
+      - uid: file-upload-alert
+        title: Malicious File Upload Detected
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: loki
+            model:
+              expr: 'sum(count_over_time({job="suricata"} |~ `(?i)file upload` [5m]))'
+              queryType: instant
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+        noDataState: NoData
+        execErrState: Error
+        for: 1m
+        annotations:
+          summary: 'Malicious file upload detected'
+          description: 'Suricata detected suspicious file upload activity in the last 5 minutes'
+        labels:
+          severity: high
+          attack_type: file_upload
+
+      - uid: csrf-attack-alert
+        title: CSRF Attack Detected
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: loki
+            model:
+              expr: 'sum(count_over_time({job="suricata"} |~ `(?i)csrf` [5m]))'
+              queryType: instant
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+        noDataState: NoData
+        execErrState: Error
+        for: 1m
+        annotations:
+          summary: 'CSRF attack detected'
+          description: 'Suricata detected CSRF attack attempts in the last 5 minutes'
+        labels:
+          severity: medium
+          attack_type: csrf

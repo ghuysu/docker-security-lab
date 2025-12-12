@@ -1,0 +1,106 @@
+# Local Suricata Rules - Matched with interactive_attack.sh
+
+#=============================================================================
+# [0] SIMPLE HTTP TRAFFIC DETECTION - For Testing
+#=============================================================================
+alert tcp any any -> any 80 (msg:"HTTP Traffic to Port 80"; sid:9999999; rev:2; priority:3;)
+alert tcp any any -> any 8080 (msg:"HTTP Traffic to Port 8080"; sid:9999998; rev:2; priority:3;)
+alert tcp any any -> any 8081 (msg:"HTTP Traffic to Port 8081"; sid:9999997; rev:2; priority:3;)
+
+#=============================================================================
+# [1] PORT SCANNING DETECTION (nmap -sV --top-ports 1000)
+#=============================================================================
+alert icmp any any -> $HOME_NET any (msg:"NMAP - ICMP Ping Sweep"; itype:8; sid:1000001; rev:2; priority:2;)
+alert tcp any any -> $HOME_NET any (msg:"NMAP - TCP SYN Scan"; flags:S; threshold:type threshold, track by_src, count 10, seconds 60; sid:1000002; rev:3; priority:2;)
+alert tcp any any -> $HOME_NET any (msg:"NMAP - Service Version Detection"; flags:S; threshold:type threshold, track by_src, count 20, seconds 120; sid:1000003; rev:3; priority:2;)
+
+#=============================================================================
+# [2] SQL INJECTION DETECTION (sqlmap attacks)
+#=============================================================================
+# SQLMap user-agent detection
+alert tcp any any -> $HOME_NET 80 (msg:"SQLMap - User-Agent Detected"; content:"User-Agent|3a| sqlmap"; nocase; sid:1000010; rev:1; priority:1;)
+
+# UNION-based SQL injection
+alert tcp any any -> $HOME_NET 80 (msg:"SQL Injection - UNION SELECT Attack"; content:"UNION"; nocase; content:"SELECT"; nocase; distance:0; within:50; sid:1000011; rev:2; priority:1;)
+
+# Boolean-based blind SQL injection
+alert tcp any any -> $HOME_NET 80 (msg:"SQL Injection - OR 1=1 Attack"; content:"OR"; nocase; content:"1=1"; nocase; distance:0; within:20; sid:1000012; rev:2; priority:1;)
+alert tcp any any -> $HOME_NET 80 (msg:"SQL Injection - AND 1=1 Attack"; content:"AND"; nocase; content:"1=1"; nocase; distance:0; within:20; sid:1000013; rev:1; priority:1;)
+
+# Time-based blind SQL injection
+alert tcp any any -> $HOME_NET 80 (msg:"SQL Injection - SLEEP Function"; content:"SLEEP"; nocase; pcre:"/SLEEP\s*\(/i"; sid:1000014; rev:1; priority:1;)
+alert tcp any any -> $HOME_NET 80 (msg:"SQL Injection - BENCHMARK Function"; content:"BENCHMARK"; nocase; sid:1000015; rev:1; priority:1;)
+
+# Error-based SQL injection
+alert tcp any any -> $HOME_NET 80 (msg:"SQL Injection - MySQL Error Function"; content:"extractvalue"; nocase; sid:1000016; rev:1; priority:1;)
+alert tcp any any -> $HOME_NET 80 (msg:"SQL Injection - Comment Injection"; content:"--"; sid:1000017; rev:1; priority:1;)
+
+# Database enumeration
+alert tcp any any -> $HOME_NET 80 (msg:"SQL Injection - Database Enumeration"; content:"information_schema"; nocase; sid:1000018; rev:1; priority:1;)
+
+#=============================================================================
+# [3] BRUTE FORCE DETECTION (hydra attacks)
+#=============================================================================
+alert tcp any any -> $HOME_NET 80 (msg:"Hydra - Brute Force Login Attempt"; content:"POST"; http_method; content:"/login.php"; http_uri; threshold:type threshold, track by_src, count 10, seconds 60; sid:1000020; rev:1; priority:1;)
+alert tcp any any -> $HOME_NET 80 (msg:"Hydra - Multiple Failed Logins"; content:"Login failed"; threshold:type threshold, track by_src, count 5, seconds 30; sid:1000021; rev:1; priority:1;)
+
+#=============================================================================
+# [4] LOCAL FILE INCLUSION (LFI)
+#=============================================================================
+# /etc/passwd traversal
+alert tcp any any -> $HOME_NET 80 (msg:"LFI - /etc/passwd Access Attempt"; content:"/etc/passwd"; nocase; sid:1000030; rev:1; priority:1;)
+
+# Directory traversal patterns
+alert tcp any any -> $HOME_NET 80 (msg:"LFI - Directory Traversal ../ Pattern"; content:"../"; threshold:type threshold, track by_src, count 3, seconds 10; sid:1000031; rev:2; priority:1;)
+alert tcp any any -> $HOME_NET 80 (msg:"LFI - Deep Directory Traversal"; pcre:"/(\.\.[\/\\]){3,}/"; sid:1000032; rev:1; priority:1;)
+
+# Config file access
+alert tcp any any -> $HOME_NET 80 (msg:"LFI - Config File Access"; content:"config"; nocase; pcre:"/config\.(php|inc|conf)/i"; sid:1000033; rev:1; priority:1;)
+
+# PHP wrapper attacks
+alert tcp any any -> $HOME_NET 80 (msg:"LFI - PHP Wrapper php://filter"; content:"php://filter"; nocase; sid:1000034; rev:1; priority:1;)
+alert tcp any any -> $HOME_NET 80 (msg:"LFI - PHP Wrapper php://input"; content:"php://input"; nocase; sid:1000035; rev:1; priority:1;)
+
+#=============================================================================
+# [5] FILE UPLOAD DETECTION
+#=============================================================================
+alert tcp any any -> $HOME_NET 80 (msg:"File Upload - Suspicious File Extension"; content:"POST"; http_method; content:"/upload/"; http_uri; pcre:"/\.(php|phtml|php3|php4|php5|phps|pht|phar|jsp|asp|aspx|sh|exe|bat)/i"; sid:1000040; rev:1; priority:1;)
+alert tcp any any -> $HOME_NET 80 (msg:"File Upload - Multipart Form Data"; content:"POST"; http_method; content:"multipart/form-data"; http_header; content:"filename="; http_header; sid:1000041; rev:1; priority:2;)
+
+#=============================================================================
+# [6] XSS DETECTION (Stored XSS)
+#=============================================================================
+# Script tag injection
+alert tcp any any -> $HOME_NET 80 (msg:"XSS - Script Tag Injection"; content:"<script"; nocase; http_client_body; sid:1000050; rev:2; priority:1;)
+
+# JavaScript event handlers
+alert tcp any any -> $HOME_NET 80 (msg:"XSS - JavaScript Event Handler"; pcre:"/(onload|onerror|onclick|onmouseover|onmouseout)\s*=/i"; sid:1000051; rev:1; priority:1;)
+
+# JavaScript protocol
+alert tcp any any -> $HOME_NET 80 (msg:"XSS - JavaScript Protocol"; content:"javascript:"; nocase; sid:1000052; rev:1; priority:1;)
+
+# Alert/prompt/confirm functions
+alert tcp any any -> $HOME_NET 80 (msg:"XSS - JavaScript Alert Function"; content:"alert("; nocase; http_client_body; sid:1000053; rev:1; priority:1;)
+alert tcp any any -> $HOME_NET 80 (msg:"XSS - Cookie Theft Attempt"; content:"document.cookie"; nocase; sid:1000054; rev:1; priority:1;)
+
+# Common XSS vectors
+alert tcp any any -> $HOME_NET 80 (msg:"XSS - IMG Tag Injection"; content:"<img"; nocase; content:"src="; nocase; distance:0; within:100; sid:1000055; rev:1; priority:1;)
+alert tcp any any -> $HOME_NET 80 (msg:"XSS - IFrame Injection"; content:"<iframe"; nocase; sid:1000056; rev:1; priority:1;)
+
+#=============================================================================
+# [7] CSRF DETECTION
+#=============================================================================
+alert tcp any any -> $HOME_NET 80 (msg:"CSRF - Password Change Attempt"; content:"password_new="; http_uri; content:"password_conf="; http_uri; sid:1000060; rev:1; priority:1;)
+alert tcp any any -> $HOME_NET 80 (msg:"CSRF - Suspicious GET Request with Password"; content:"GET"; http_method; content:"password"; http_uri; sid:1000061; rev:1; priority:2;)
+
+#=============================================================================
+# ADDITIONAL SECURITY RULES
+#=============================================================================
+# Suspicious user agents
+alert tcp any any -> $HOME_NET 80 (msg:"Suspicious User-Agent - curl"; content:"User-Agent|3a| curl"; nocase; sid:1000070; rev:1; priority:3;)
+alert tcp any any -> $HOME_NET 80 (msg:"Suspicious User-Agent - wget"; content:"User-Agent|3a| Wget"; nocase; sid:1000071; rev:1; priority:3;)
+alert tcp any any -> $HOME_NET 80 (msg:"Suspicious User-Agent - Python"; content:"User-Agent|3a| Python"; nocase; sid:1000072; rev:1; priority:3;)
+
+# Null byte injection
+alert tcp any any -> $HOME_NET 80 (msg:"Null Byte Injection Attempt"; content:"%00"; sid:1000080; rev:1; priority:1;)
+alert tcp any any -> any any (msg:"ANY TCP PACKET"; sid:8888888; rev:1;)
